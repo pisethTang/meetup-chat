@@ -24,9 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.0
+      # Bun comes from npm (Node and npm are already on the runner) rather than oven-sh/setup-bun,
+      # which downloads from GitHub Releases: those downloads failed with 504s during a GitHub
+      # incident on 2026-11-09 and took the deploy down with them.
+      - name: Install Bun 1.3.0
+        run: |
+          npm install --global bun@1.3.0
+          bun --version
 
       - name: Install dev dependencies (TypeScript, Leaflet types)
         run: bun install --frozen-lockfile
