@@ -48,17 +48,19 @@ export const SPOTS: Spot[] = [
  ["Tea Tree Plaza area","Modbury",-34.8290,138.6880,"easy"],
  ["Beach Road","Christies Beach",-35.1350,138.4740,"easy"]
 ];
-// Well-known cafés (addresses from Time Out, Broadsheet and venue listings, Nov 2026)
+// Well-known cafés (addresses from Time Out, Broadsheet and venue listings, Nov 2026).
+// Coordinates checked against OpenStreetMap (the café itself, or its street address) on 2026-11-09;
+// Leisurely Coffee isn't in OSM, so its point is approximate.
 export const CAFES: Cafe[] = [
- ["Exchange Specialty Coffee","12-18 Vardon Ave, Adelaide",-34.9218,138.6086],
- ["Elementary Coffee","9-17 Young St, Adelaide",-34.9338,138.5972],
- ["Coffee Branch","32 Leigh St, Adelaide",-34.9235,138.5976],
- ["Please Say Please","50 Grenfell St, Adelaide",-34.9238,138.6016],
- ["Handsome and the Duchess","121 Grenfell St, Adelaide",-34.9241,138.6056],
+ ["Exchange Specialty Coffee","12-18 Vardon Ave, Adelaide",-34.92282,138.60982],
+ ["Elementary Coffee","9-17 Young St, Adelaide",-34.92655,138.59596],
+ ["Coffee Branch","32 Leigh St, Adelaide",-34.92417,138.59770],
+ ["Please Say Please","50 Grenfell St, Adelaide",-34.92413,138.60151],
+ ["Handsome and the Duchess","121 Grenfell St, Adelaide",-34.92448,138.60424],
  ["Leisurely Coffee","219 Gilbert St, Adelaide",-34.9354,138.5957],
- ["The Flinders Street Project","276 Flinders St, Adelaide",-34.9262,138.6100],
- ["UR Caffe","117 Melbourne St, North Adelaide",-34.9057,138.6081],
- ["30 Acres","233 The Parade, Norwood",-34.9208,138.6385]
+ ["The Flinders Street Project","276 Flinders St, Adelaide",-34.92644,138.61072],
+ ["UR Caffe","117 Melbourne St, North Adelaide",-34.90720,138.60743],
+ ["30 Acres","233 The Parade, Norwood",-34.92077,138.64036]
 ];
 // Areas you can restrict to: a centre + radius in metres, or a bounding box (the CBD)
 export const AREAS: Area[] = [

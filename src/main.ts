@@ -502,10 +502,13 @@ async function run(): Promise<void> {
     // Each spot is a compact row (number, name, You | Friend minutes, one-line gist);
     // the selected one also shows its details: address, leave-by times, full trips, parking and links.
     $("results").innerHTML = top.map((r, i) => {
-      const c = r.c, name = c.strip ? `${c.name}, ${c.where}` : c.name, dest = `${c.p[0]},${c.p[1]}`;
+      const c = r.c, name = c.strip ? `${c.name}, ${c.where}` : c.name;
       const note = noteFor(c);
       const park = drive ? `<p id="park${i}">${note ? "Free parking: " + note : "Free parking: looking…"}</p>` : "";
       const search = c.strip ? "cafes near " + name + ", SA" : name + ", " + c.where + ", SA";
+      // Route links name the café (Google finds the place itself); coordinates alone get turned into
+      // whatever address is nearest. Café strips have no single place, so they keep their point.
+      const dest = c.strip ? `${c.p[0]},${c.p[1]}` : enc(search);
       return `<li>
         <button type="button" class="spot" data-i="${i}" aria-expanded="false">
           <span class="n">${i + 1}</span><span class="nm">${name}</span>
