@@ -4,8 +4,14 @@ import type { LatLng } from "./data";
 import { enc, getJSON } from "./http";
 
 const API = "https://api.transitous.org/api/v5/plan";
-/** Extra minutes a change of vehicle "costs" when picking between trips. */
+// How trips are compared when picking the best one for a person (like Google Maps / OpenTripPlanner,
+// a trip that is a bit later but has much less walking wins):
+/** Extra minutes a change of vehicle "costs". */
 const TRANSFER_PENALTY = 5;
+/** Extra cost per minute of walking on top of the minute itself, i.e. walking counts double. */
+const WALK_EXTRA = 1;
+/** When leaving now, waiting at home for a later bus only counts half (you're not on the road yet). */
+const HOME_WAIT_WEIGHT = 0.5;
 
 export interface Leg {
   walk: boolean;
@@ -93,7 +99,12 @@ export async function transitTrip(from: LatLng, to: LatLng, meetAt: Date | null)
     .filter(it => !it.legs.some(l => l.cancelled))
     .map(it => toTrip(it, meetAt, now))
     .filter(t => meetAt ? t.end.getTime() <= meetAt.getTime() + 60000 && t.start >= now : true);
-  trips.sort((a, b) => (a.cost + TRANSFER_PENALTY * a.transfers) - (b.cost + TRANSFER_PENALTY * b.transfers));
+  const feel = (t: Trip) => {
+    const walk = t.legs.filter(l => l.walk).reduce((s, l) => s + (l.end.getTime() - l.start.getTime()) / 60000, 0);
+    const homeWait = meetAt ? 0 : Math.max(0, (t.start.getTime() - now.getTime()) / 60000);
+    return t.cost - (1 - HOME_WAIT_WEIGHT) * homeWait + WALK_EXTRA * walk + TRANSFER_PENALTY * t.transfers;
+  };
+  trips.sort((a, b) => feel(a) - feel(b));
   return trips[0] ?? null;
 }
 
