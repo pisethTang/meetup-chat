@@ -210,33 +210,46 @@ function isPeak(d: Date): boolean {
   return day >= 1 && day <= 5 && ((h >= 7 && h < 9.5) || (h >= 16 && h < 18.5));
 }
 
-// Map: full-colour street map (Esri World Street Map, no key needed). Hidden where map images can't load.
+// Map: full-colour street map (Esri World Street Map, no key needed), always on screen beside the panel.
+// Where map images can't load, the page drops to a single column (.nomap) instead of showing a blank pane.
 const COL = { you: "#1a73e8", friend: "#e8710a", pin: "#d93025" };
-let mapOK = false, map: L.Map | null = null, layer: L.LayerGroup | null = null, routeLayer: L.LayerGroup | null = null;
+let map: L.Map | null = null, layer: L.LayerGroup | null = null, routeLayer: L.LayerGroup | null = null;
 let lastA: Place, lastB: Place, lastTop: Result[], modes: [Mode, Mode];
 let homeBounds: L.LatLngBounds | null = null;
+const noMap = (on: boolean) => {
+  $("app").classList.toggle("nomap", on);
+  if (!on) map?.invalidateSize();
+};
+const mapShown = () => !!map && !$("app").classList.contains("nomap");
+
+function initMap(): void {
+  if (typeof L === "undefined") { noMap(true); return; }
+  map = L.map($("map"), {
+    zoomControl: true, scrollWheelZoom: true, wheelPxPerZoomLevel: 90, zoomSnap: 0.25, zoomDelta: 0.5,
+    inertia: true, preferCanvas: false, ...({ tap: true } as L.MapOptions),
+  }).setView([-34.93, 138.6], 11); // Adelaide, until there are results
+  addMapButtons(map);
+  const tiles = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, keepBuffer: 6, updateWhenZooming: false,
+    attribution: "Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors",
+  }).addTo(map);
+  let loaded = false;
+  tiles.on("tileload", () => { if (!loaded) { loaded = true; noMap(false); } });
+  tiles.on("tileerror", () => { if (!loaded) noMap(true); });
+  setTimeout(() => { if (!loaded) noMap(true); }, 4000);
+}
+/** Remove markers and routes, e.g. when the form changes and the results are cleared. */
+function clearMap(): void {
+  selSeq++; // drop any route still being fetched
+  layer?.remove(); routeLayer?.remove();
+  layer = routeLayer = null;
+  homeBounds = null;
+}
 
 function drawMap(A: Place, B: Place, top: Result[]): void {
-  const box = $("map");
   lastA = A; lastB = B; lastTop = top;
-  if (typeof L === "undefined") { box.hidden = true; return; }
-  if (!map || mapOK) box.hidden = false;
-  if (!map) {
-    map = L.map(box, {
-      zoomControl: true, scrollWheelZoom: true, wheelPxPerZoomLevel: 90, zoomSnap: 0.25, zoomDelta: 0.5,
-      inertia: true, preferCanvas: false, ...({ tap: true } as L.MapOptions),
-    });
-    addMapButtons(map);
-    const tiles = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
-      maxZoom: 19, keepBuffer: 6, updateWhenZooming: false,
-      attribution: "Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors",
-    }).addTo(map);
-    let loaded = false;
-    tiles.on("tileload", () => { loaded = true; mapOK = true; box.hidden = false; });
-    tiles.on("tileerror", () => { if (!loaded) box.hidden = true; });
-    setTimeout(() => { if (!loaded) box.hidden = true; }, 2500);
-  }
-  if (layer) layer.remove();
+  if (!map) return;
+  clearMap();
   layer = L.layerGroup().addTo(map);
   const dot = (label: string, color: string) => L.divIcon({
     className: "", iconSize: [90, 22], iconAnchor: [8, 11],
@@ -307,9 +320,13 @@ const tripRoute = (t: Trip): Route => ({
 let selSeq = 0;
 async function select(i: number, reveal = false): Promise<void> {
   const seq = ++selSeq;
-  document.querySelectorAll("#results li").forEach((li, k) => li.classList.toggle("sel", k === i));
+  document.querySelectorAll("#results li").forEach((li, k) => {
+    li.classList.toggle("sel", k === i);
+    li.querySelector(".spot")?.setAttribute("aria-expanded", String(k === i));
+    if (k === i) li.scrollIntoView({ block: "nearest", behavior: "smooth" }); // e.g. after clicking its pin
+  });
   document.querySelectorAll(".pin").forEach((el, k) => el.classList.toggle("sel", k === i));
-  if (!map || $("map").hidden) return;
+  if (!map || !mapShown()) return;
   const m = map;
   const res = lastTop[i], dest = res.c.p;
   if (reveal && !m.getBounds().contains(dest)) m.panTo(dest, { animate: true, duration: .4 });
@@ -380,36 +397,56 @@ async function addTransit(list: Result[], A: Place, B: Place, mA: Mode, mB: Mode
   return { failed, total: jobs.length };
 }
 
+const MODE_NAME: Record<Mode, string> = { drive: "Car", transit: "Public transport", bike: "Bike", walk: "Walk" };
+const modeOf = (who: "A" | "B") =>
+  (document.querySelector<HTMLInputElement>(`input[name="mode${who}"]:checked`)?.value ?? "drive") as Mode;
+const optionText = (id: string) => select_(id).selectedOptions[0]?.text ?? "";
+
+/** After a search the form folds into a short recap (with an Edit button) so the results get the room. */
+function foldForm(fold: boolean): void {
+  if (fold) {
+    const meetAt = select_("when").value === "meet" ? new Date(input("meetAt").value) : null;
+    $("recapA").textContent = `${input("addrA").value.trim()} · ${MODE_NAME[modeOf("A")]}`;
+    $("recapB").textContent = `${input("addrB").value.trim()} · ${MODE_NAME[modeOf("B")]}`;
+    $("recapOpts").textContent = [
+      meetAt ? "Meet " + meetAt.toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "Leaving now",
+      optionText("area"), optionText("strategy"),
+    ].join(" · ");
+  }
+  const hadFocus = $("form").contains(document.activeElement);
+  $("form").hidden = fold;
+  $("recap").hidden = !fold;
+  // keep keyboard focus somewhere sensible when the focused control disappears
+  if (fold && hadFocus) document.querySelector<HTMLElement>("#results .spot")?.focus();
+}
+/** Show an error, clear the results and open the form so it can be fixed. */
+function fail(msg: string): void {
+  $("err").textContent = msg;
+  $("results").innerHTML = ""; $("summary").textContent = ""; $("status").textContent = "";
+  clearMap();
+  foldForm(false);
+}
+
 async function run(): Promise<void> {
   if (busy) return;
   busy = true; setGo(false); $("err").textContent = "";
   try {
     const meetAt = select_("when").value === "meet" ? new Date(input("meetAt").value) : null;
-    if (meetAt && !(meetAt.getTime() > Date.now())) { // also catches an empty or invalid time
-      $("err").textContent = "Pick a meeting time in the future.";
-      $("results").innerHTML = ""; $("summary").textContent = ""; $("status").textContent = "";
-      return;
-    }
+    if (meetAt && !(meetAt.getTime() > Date.now())) return fail("Pick a meeting time in the future."); // also catches an empty time
     $("status").textContent = "Finding addresses…";
     const tA = input("addrA").value.trim(), tB = input("addrB").value.trim();
     const A = await locate(tA), B = await locate(tB);
     $("addrA").setAttribute("aria-invalid", String(!A));
     $("addrB").setAttribute("aria-invalid", String(!B));
     if (!A || !B) {
-      $("err").textContent = `Can't find ${!A ? "your" : "your friend's"} address. Add the suburb and postcode, for example "13 Example Crescent, Rostrevor SA 5073".`;
-      $("results").innerHTML = ""; $("summary").textContent = ""; $("status").textContent = "";
-      return;
+      return fail(`Can't find ${!A ? "your" : "your friend's"} address. Add the suburb and postcode, for example "13 Example Crescent, Rostrevor SA 5073".`);
     }
-    const mA = select_("modeA").value as Mode, mB = select_("modeB").value as Mode;
+    const mA = modeOf("A"), mB = modeOf("B");
     const s = select_("strategy").value as Strategy, peak = isPeak(meetAt ?? new Date());
     const drive = mA === "drive" || mB === "drive", anyTransit = mA === "transit" || mB === "transit";
     $("status").textContent = "Finding cafés…";
     const { list } = await candidates(select_("area").value);
-    if (!list.length) {
-      $("err").textContent = "No cafés found in that area. Pick another area or Anywhere.";
-      $("results").innerHTML = ""; $("status").textContent = "";
-      return;
-    }
+    if (!list.length) return fail("No cafés found in that area. Pick another area or Anywhere.");
     // keep the road-time request small: 60 places nearest the midpoint
     const mid: LatLng = [(A.p[0] + B.p[0]) / 2, (A.p[1] + B.p[1]) / 2];
     const pool = list.sort((x, y) => km(mid, x.p) - km(mid, y.p)).slice(0, 60);
@@ -432,7 +469,7 @@ async function run(): Promise<void> {
       else if (failed && top.some(r => (mA === "transit" && r.tripA === undefined) || (mB === "transit" && r.tripB === undefined)))
         transitNote = "The public transport planner didn't answer for every spot, so some times are estimates.";
     }
-    $("summary").textContent = `You're ${km(A.p, B.p).toFixed(1)} km apart in a straight line.`;
+    $("summary").textContent = `${km(A.p, B.p).toFixed(1)} km apart in a straight line`;
     const fb = [
       !A.exact && `your trip starts from the centre of ${A.sub}`,
       !B.exact && `your friend's trip starts from the centre of ${B.sub}`,
@@ -442,7 +479,7 @@ async function run(): Promise<void> {
       transitNote,
     ].filter(Boolean).join(" ");
 
-    const mins = (t: number) => t >= NO_TRIP ? "no trip" : `${Math.round(t)} min`;
+    const mins = (t: number) => t >= NO_TRIP ? "–" : String(Math.round(t));
     const leave = (t: number, trip?: Trip | null) =>
       t >= NO_TRIP ? "no trip" : clock(trip ? trip.start : new Date(meetAt!.getTime() - t * 60000));
     const tripLine = (whose: string, mode: Mode, trip?: Trip | null) => {
@@ -450,29 +487,48 @@ async function run(): Promise<void> {
       if (!trip) return `<p>${whose} trip: no public transport ${meetAt ? "gets there in time" : "trip found"}</p>`;
       return `<p>${whose} trip: ${meetAt ? "" : `leave ${clock(trip.start)}, `}${esc(tripSteps(trip))}, arrive ${clock(trip.end)}</p>`;
     };
+    /** One short line under each spot: the rides (and arrival) for whoever takes public transport, else where it is. */
+    const gist = (r: Result) => {
+      const both = mA === "transit" && mB === "transit", parts: string[] = [];
+      for (const [who, mode, trip] of [["You", mA, r.tripA], ["Friend", mB, r.tripB]] as const) {
+        if (mode !== "transit" || !trip) continue;
+        const rides = trip.legs.filter(l => !l.walk).map(l => l.label).join(" → ") || "Walk";
+        parts.push((who === "Friend" || both ? who + ": " : "") + (both ? rides : `${rides}, arr ${clock(trip.end)}`));
+      }
+      if (!parts.length) parts.push(r.c.strip ? "Café strip" : r.c.where);
+      if (drive) parts.push(PARK[r.c.park].label);
+      return esc(parts.join(" · "));
+    };
+    // Each spot is a compact row (number, name, You | Friend minutes, one-line gist);
+    // the selected one also shows its details: address, leave-by times, full trips, parking and links.
     $("results").innerHTML = top.map((r, i) => {
       const c = r.c, name = c.strip ? `${c.name}, ${c.where}` : c.name, dest = `${c.p[0]},${c.p[1]}`;
       const note = noteFor(c);
       const park = drive ? `<p id="park${i}">${note ? "Free parking: " + note : "Free parking: looking…"}</p>` : "";
       const search = c.strip ? "cafes near " + name + ", SA" : name + ", " + c.where + ", SA";
-      return `<li><h3><button type="button" data-i="${i}">${i + 1}. ${name}</button></h3>
-        ${c.strip ? "" : `<p>${c.where}${c.known ? " · well known" : ""}</p>`}
-        <p>You ${mins(r.tA)} · Friend ${mins(r.tB)}${drive ? " · " + PARK[c.park].label : ""}</p>
-        ${meetAt ? `<p>Leave by: you ${leave(r.tA, r.tripA)}, friend ${leave(r.tB, r.tripB)}</p>` : ""}
-        ${tripLine("Your", mA, r.tripA)}${tripLine("Your friend's", mB, r.tripB)}
-        ${park}
-        <div class="links">
-          ${link("https://www.google.com/maps/search/?api=1&query=" + enc(search), c.strip ? "Cafés" : "Map", "Map of " + name)}
-          ${link(`https://www.google.com/maps/dir/?api=1&origin=${enc(tA)}&destination=${dest}&travelmode=${MODES[mA].gm}`, "Your route", "Your route to " + name)}
-          ${link(`https://www.google.com/maps/dir/?api=1&origin=${enc(tB)}&destination=${dest}&travelmode=${MODES[mB].gm}`, "Friend's route", "Friend's route to " + name)}
+      return `<li>
+        <button type="button" class="spot" data-i="${i}" aria-expanded="false">
+          <span class="n">${i + 1}</span><span class="nm">${name}</span>
+          <span class="tm" aria-label="You ${mins(r.tA)} minutes, friend ${mins(r.tB)} minutes">${mins(r.tA)}<i>|</i>${mins(r.tB)}</span>
+          <span class="gist">${gist(r)}</span>
+        </button>
+        <div class="more">
+          ${c.strip ? "" : `<p>${c.where}${c.known ? " · well known" : ""}</p>`}
+          ${meetAt ? `<p>Leave by: you ${leave(r.tA, r.tripA)}, friend ${leave(r.tB, r.tripB)}</p>` : ""}
+          ${tripLine("Your", mA, r.tripA)}${tripLine("Your friend's", mB, r.tripB)}
+          ${park}
+          <div class="links">
+            ${link("https://www.google.com/maps/search/?api=1&query=" + enc(search), c.strip ? "Cafés" : "Map", "Map of " + name)}
+            ${link(`https://www.google.com/maps/dir/?api=1&origin=${enc(tA)}&destination=${dest}&travelmode=${MODES[mA].gm}`, "Your route", "Your route to " + name)}
+            ${link(`https://www.google.com/maps/dir/?api=1&origin=${enc(tB)}&destination=${dest}&travelmode=${MODES[mB].gm}`, "Friend's route", "Friend's route to " + name)}
+          </div>
         </div></li>`;
     }).join("");
     modes = [mA, mB];
     routeCache.clear();
-    document.querySelectorAll<HTMLButtonElement>("#results h3 button").forEach(b => b.addEventListener("click", () => {
-      select(+b.dataset.i!, true);
-      $("map").scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }));
+    document.querySelectorAll<HTMLButtonElement>("#results .spot").forEach(b =>
+      b.addEventListener("click", () => select(+b.dataset.i!, true)));
+    foldForm(true);
     drawMap(A, B, top);
     // Fill in free parking afterwards, without holding up the results
     if (drive) {
@@ -489,10 +545,17 @@ async function run(): Promise<void> {
   } finally { busy = false; setGo(true); }
 }
 
-// Clear old results as soon as anything changes, so nothing stale is shown
-["addrA", "addrB", "modeA", "modeB", "area", "strategy", "when", "meetAt"].forEach(id => $(id).addEventListener("input", () => {
+// Clear old results as soon as anything in the form changes, so nothing stale is shown
+$("form").addEventListener("input", () => {
   $("results").innerHTML = ""; $("summary").textContent = ""; $("err").textContent = "";
-  $("map").hidden = true; $("status").textContent = "Press Find spots to update.";
-}));
+  clearMap(); $("status").textContent = "Press Find spots to update.";
+});
 $("form").addEventListener("submit", e => { e.preventDefault(); run(); });
+$("edit").addEventListener("click", () => { foldForm(false); input("addrA").focus(); });
+$("aboutBtn").addEventListener("click", () => {
+  const open = $("about").hidden;
+  $("about").hidden = !open;
+  $("aboutBtn").setAttribute("aria-expanded", String(open));
+});
+initMap();
 run();
