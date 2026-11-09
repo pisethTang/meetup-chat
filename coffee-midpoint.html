@@ -7,58 +7,89 @@
 <link rel="stylesheet" href="coffee-midpoint.css">
 </head>
 <body>
-<main>
-  <h1>Coffee chat midpoint</h1>
+<!-- One screen: a scrollable side panel (form, then results) next to a full-height map.
+     On phones the map sits on top and the panel below it. -->
+<div class="app" id="app">
+  <main class="panel">
+    <header class="top">
+      <h1>Coffee chat midpoint</h1>
+      <button type="button" class="icon" id="aboutBtn" aria-expanded="false" aria-controls="about" title="How it works">
+        <span aria-hidden="true">i</span><span class="sr">How it works</span></button>
+    </header>
 
-  <form id="form" novalidate>
-    <fieldset>
-      <legend>You</legend>
-      <div class="row">
-        <div class="wide"><label for="addrA">Address</label><input id="addrA" autocomplete="street-address" placeholder="Street, suburb, postcode" value="17A Ash Avenue Clovelly Park SA 5042"></div>
-        <div><label for="modeA">Travel by</label>
-          <select id="modeA"><option value="drive">Car</option><option value="transit" selected>Public transport</option><option value="bike">Bike</option><option value="walk">Walk</option></select></div>
-      </div>
-    </fieldset>
-    <fieldset>
-      <legend>Friend</legend>
-      <div class="row">
-        <div class="wide"><label for="addrB">Address</label><input id="addrB" autocomplete="off" placeholder="Street, suburb, postcode" value="13 Closeburn Cres, Salisbury Park SA 5109"></div>
-        <div><label for="modeB">Travel by</label>
-          <select id="modeB"><option value="drive" selected>Car</option><option value="transit">Public transport</option><option value="bike">Bike</option><option value="walk">Walk</option></select></div>
-      </div>
-    </fieldset>
-    <div class="row">
-      <div><label for="when">When</label>
-        <select id="when"><option value="now" selected>Leaving now</option><option value="meet">Meeting at a set time</option></select></div>
-      <div id="meetWrap" hidden><label for="meetAt">Meeting time</label><input type="datetime-local" id="meetAt"></div>
+    <div class="about" id="about" hidden>
+      <p>Each spot is ranked by both travel times. Pick a spot to see both routes on the map. Blue is your route, orange is your friend's. Dotted lines are walking, or estimates when no route was found.</p>
+      <p>Pick "Meeting at a set time" and each person's time counts from when they need to leave home, so a bus that gets in 20 minutes early counts against that spot. Driving times allow for weekday peak-hour traffic.</p>
+      <p>Public transport trips come from <a href="https://transitous.org" target="_blank" rel="noopener">Transitous</a>, using Adelaide Metro timetables (no live delays). Addresses, road times, cafés and free car parks come from OpenStreetMap when the page can reach it. If not, it uses the suburb in each address and a built-in list of cafés. Check parking signs on the day.</p>
     </div>
-    <div class="row">
-      <div class="wide"><label for="area">Meet in</label><select id="area"></select></div>
-      <div class="wide"><label for="strategy">Best spot means</label>
-        <select id="strategy" aria-describedby="hint"><option value="balanced" selected>Fair and quick</option><option value="fair">Same travel time</option><option value="fast">Least total travel</option></select></div>
-      <p class="wide hint" id="hint"></p>
+
+    <form id="form" novalidate>
+      <div class="line">
+        <label for="addrA">You</label>
+        <input id="addrA" autocomplete="street-address" placeholder="Street, suburb, postcode" value="17A Ash Avenue Clovelly Park SA 5042">
+        <fieldset class="seg">
+          <legend class="sr">You travel by</legend>
+          <input type="radio" name="modeA" id="modeA-drive" value="drive"><label for="modeA-drive">Car</label>
+          <input type="radio" name="modeA" id="modeA-transit" value="transit" checked><label for="modeA-transit" title="Public transport">Transit</label>
+          <input type="radio" name="modeA" id="modeA-bike" value="bike"><label for="modeA-bike">Bike</label>
+          <input type="radio" name="modeA" id="modeA-walk" value="walk"><label for="modeA-walk">Walk</label>
+        </fieldset>
+      </div>
+      <div class="line">
+        <label for="addrB">Friend</label>
+        <input id="addrB" autocomplete="off" placeholder="Street, suburb, postcode" value="13 Closeburn Cres, Salisbury Park SA 5109">
+        <fieldset class="seg">
+          <legend class="sr">Your friend travels by</legend>
+          <input type="radio" name="modeB" id="modeB-drive" value="drive" checked><label for="modeB-drive">Car</label>
+          <input type="radio" name="modeB" id="modeB-transit" value="transit"><label for="modeB-transit" title="Public transport">Transit</label>
+          <input type="radio" name="modeB" id="modeB-bike" value="bike"><label for="modeB-bike">Bike</label>
+          <input type="radio" name="modeB" id="modeB-walk" value="walk"><label for="modeB-walk">Walk</label>
+        </fieldset>
+      </div>
+      <div class="line">
+        <label for="when">When</label>
+        <select id="when"><option value="now" selected>Leaving now</option><option value="meet">Meeting at a set time</option></select>
+      </div>
+      <div class="line" id="meetWrap" hidden>
+        <label for="meetAt">At</label>
+        <input type="datetime-local" id="meetAt">
+      </div>
+      <div class="line">
+        <label for="area">Area</label>
+        <div class="pair">
+          <select id="area"></select>
+          <label for="strategy" class="sr">Best spot means</label>
+          <select id="strategy" aria-describedby="hint"><option value="balanced" selected>Fair and quick</option><option value="fair">Same travel time</option><option value="fast">Least total travel</option></select>
+        </div>
+        <p class="hint" id="hint"></p>
+      </div>
+      <button type="submit" id="go">Find spots</button>
+    </form>
+
+    <div class="recap" id="recap" hidden>
+      <div class="recap-text">
+        <p><b>You</b> <span id="recapA"></span></p>
+        <p><b>Friend</b> <span id="recapB"></span></p>
+        <p class="muted" id="recapOpts"></p>
+      </div>
+      <button type="button" class="ghost" id="edit">Edit</button>
     </div>
-    <button type="submit" id="go">Find spots</button>
-  </form>
 
-  <p class="msg" id="err" role="alert"></p>
-  <hr>
+    <p class="msg" id="err" role="alert"></p>
 
-  <section aria-labelledby="resTitle">
-    <h2 id="resTitle">Top 5 spots</h2>
-    <p class="summary" id="summary"></p>
-    <p class="msg summary" id="status" role="status"></p>
-    <div id="map" hidden role="region" tabindex="0" aria-label="Interactive map: drag to move, scroll or pinch to zoom, arrow keys also work. The same spots are listed below."></div>
-    <ol id="results" aria-live="polite"></ol>
-  </section>
+    <section class="results" aria-labelledby="resTitle">
+      <div class="reshead">
+        <h2 id="resTitle">Top 5 spots</h2>
+        <span class="legend">minutes: you | friend</span>
+      </div>
+      <p class="summary" id="summary"></p>
+      <p class="msg summary" id="status" role="status"></p>
+      <ol id="results" aria-live="polite"></ol>
+    </section>
+  </main>
 
-  <details>
-    <summary>How it works</summary>
-    <p>Each spot is ranked by both travel times. Tap a spot to see both routes on the map. Blue is your route, orange is your friend's. Dotted lines are walking, or estimates when no route was found.</p>
-    <p>Pick "Meeting at a set time" and each person's time counts from when they need to leave home, so a bus that gets in 20 minutes early counts against that spot. Driving times allow for weekday peak-hour traffic.</p>
-    <p>Public transport trips come from <a href="https://transitous.org" target="_blank" rel="noopener">Transitous</a>, using Adelaide Metro timetables (no live delays). Addresses, road times, cafés and free car parks come from OpenStreetMap when the page can reach it. If not, it uses the suburb in each address and a built-in list of cafés. Check parking signs on the day.</p>
-  </details>
-</main>
+  <div id="map" role="region" tabindex="0" aria-label="Interactive map: drag to move, scroll or pinch to zoom, arrow keys also work. The same spots are listed in the panel."></div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- Built from src/*.ts with `bun run build` -->
